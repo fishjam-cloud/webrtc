@@ -183,8 +183,10 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   // defines `playout_parameters_` and `record_parameters_`.
   void SetupAudioBuffersForActiveAudioSession();
 
-  // Creates the audio unit.
-  bool CreateAudioUnit();
+  // Creates the audio unit. When enable_input is false the input bus is left
+  // disabled, avoiding the iOS microphone-permission prompt that AUVoiceIO
+  // would otherwise trigger as soon as the unit is created.
+  bool CreateAudioUnit(bool enable_input);
 
   // Updates the audio unit state based on current state.
   void UpdateAudioUnit(bool can_play_or_record);
@@ -200,7 +202,14 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
 
   // Activates our audio session, creates and initializes the voice-processing
   // audio unit and verifies that we got the preferred native audio parameters.
-  bool InitPlayOrRecord();
+  // When enable_input is false the audio unit's input bus is disabled, so iOS
+  // does not prompt for microphone permission. Used for receive-only flows.
+  bool InitPlayOrRecord(bool enable_input);
+
+  // Tears down and re-initializes the audio unit with a new enable_input
+  // value, preserving the started state. Used when transitioning between
+  // listen-only and talking on a live peer connection.
+  bool RestartAudioUnit(bool enable_input);
 
   // Closes and deletes the voice-processing I/O unit.
   void ShutdownPlayOrRecord();
@@ -269,9 +278,14 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   // Set to true after successful call to Init(), false otherwise.
   bool initialized_ RTC_GUARDED_BY(thread_);
 
-  // Set to true after successful call to InitRecording() or InitPlayout(),
-  // false otherwise.
-  bool audio_is_initialized_;
+  // Set to true after successful call to InitPlayout(), false otherwise.
+  bool playout_is_initialized_;
+
+  // Set to true after successful call to InitRecording(), false otherwise.
+  // Tracked separately from playout so that the audio unit's input bus can be
+  // enabled only when WebRTC actually has a local audio sender, deferring
+  // the iOS microphone-permission prompt until the user starts talking.
+  bool recording_is_initialized_;
 
   // Set to true if audio session is interrupted, false otherwise.
   bool is_interrupted_;

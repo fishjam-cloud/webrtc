@@ -98,7 +98,8 @@ AudioDeviceIOS::AudioDeviceIOS(bool bypass_voice_processing)
       recording_(0),
       playing_(0),
       initialized_(false),
-      audio_is_initialized_(false),
+      playout_is_initialized_(false),
+      recording_is_initialized_(false),
       is_interrupted_(false),
       has_configured_session_(false),
       num_detected_playout_glitches_(0),
@@ -180,50 +181,60 @@ int32_t AudioDeviceIOS::InitPlayout() {
   LOGI() << "InitPlayout";
   RTC_DCHECK_RUN_ON(thread_);
   RTC_DCHECK(initialized_);
-  RTC_DCHECK(!audio_is_initialized_);
+  RTC_DCHECK(!playout_is_initialized_);
   RTC_DCHECK(!playing_.load());
-  if (!audio_is_initialized_) {
-    if (!InitPlayOrRecord()) {
+  if (!recording_is_initialized_) {
+    if (!InitPlayOrRecord(false)) {
       RTC_LOG_F(LS_ERROR) << "InitPlayOrRecord failed for InitPlayout!";
       return -1;
     }
   }
-  audio_is_initialized_ = true;
+  playout_is_initialized_ = true;
   return 0;
 }
 
 bool AudioDeviceIOS::PlayoutIsInitialized() const {
   RTC_DCHECK_RUN_ON(thread_);
-  return audio_is_initialized_;
+  return playout_is_initialized_;
 }
 
 bool AudioDeviceIOS::RecordingIsInitialized() const {
   RTC_DCHECK_RUN_ON(thread_);
-  return audio_is_initialized_;
+  return recording_is_initialized_;
 }
 
 int32_t AudioDeviceIOS::InitRecording() {
   LOGI() << "InitRecording";
   RTC_DCHECK_RUN_ON(thread_);
   RTC_DCHECK(initialized_);
-  RTC_DCHECK(!audio_is_initialized_);
+  RTC_DCHECK(!recording_is_initialized_);
   RTC_DCHECK(!recording_.load());
-  if (!audio_is_initialized_) {
-    if (!InitPlayOrRecord()) {
+  if (!playout_is_initialized_) {
+    // Bring up the audio unit and session in playback-only mode. The
+    // PlayAndRecord category flip (which triggers the iOS mic permission
+    // prompt) is deferred to StartRecording, matching LiveKit's and
+    // FishjamRTCAudioDevice's lifecycle: initializing recording must not
+    // engage the microphone.
+    if (!InitPlayOrRecord(false)) {
       RTC_LOG_F(LS_ERROR) << "InitPlayOrRecord failed for InitRecording!";
       return -1;
     }
   }
-  audio_is_initialized_ = true;
+  // Deliberately do NOT call RestartAudioUnit(true) here. The category flip
+  // happens lazily inside StartRecording when WebRTC actually wants mic data.
+  recording_is_initialized_ = true;
   return 0;
 }
 
 int32_t AudioDeviceIOS::StartPlayout() {
   LOGI() << "StartPlayout";
   RTC_DCHECK_RUN_ON(thread_);
-  RTC_DCHECK(audio_is_initialized_);
+  RTC_DCHECK(playout_is_initialized_);
   RTC_DCHECK(!playing_.load());
   RTC_DCHECK(audio_unit_);
+  if (!playout_is_initialized_) {
+    return -1;
+  }
   if (fine_audio_buffer_) {
     fine_audio_buffer_->ResetPlayout();
   }
@@ -246,14 +257,15 @@ int32_t AudioDeviceIOS::StartPlayout() {
 int32_t AudioDeviceIOS::StopPlayout() {
   LOGI() << "StopPlayout";
   RTC_DCHECK_RUN_ON(thread_);
-  if (!audio_is_initialized_ || !playing_.load()) {
+  if (!playout_is_initialized_ || !playing_.load()) {
     return 0;
   }
   if (!recording_.load()) {
     ShutdownPlayOrRecord();
-    audio_is_initialized_ = false;
+    recording_is_initialized_ = false;
   }
   playing_.store(0, std::memory_order_release);
+  playout_is_initialized_ = false;
 
   // Derive average number of calls to OnGetPlayoutData() between detected
   // audio glitches and add the result to a histogram.
@@ -277,9 +289,21 @@ bool AudioDeviceIOS::Playing() const {
 int32_t AudioDeviceIOS::StartRecording() {
   LOGI() << "StartRecording";
   RTC_DCHECK_RUN_ON(thread_);
-  RTC_DCHECK(audio_is_initialized_);
+  RTC_DCHECK(recording_is_initialized_);
   RTC_DCHECK(!recording_.load());
   RTC_DCHECK(audio_unit_);
+  if (!recording_is_initialized_) {
+    return -1;
+  }
+  // Flip the audio session to PlayAndRecord and reinitialize the audio unit
+  // with input enabled. This is the moment iOS prompts for microphone access —
+  // matching LiveKit's "switch to PlayAndRecord when a local track is
+  // published" and FishjamRTCAudioDevice's startRecording behavior. Until now
+  // the session has been in Playback mode so iOS had no reason to prompt.
+  if (!RestartAudioUnit(true)) {
+    RTC_LOG_F(LS_ERROR) << "RestartAudioUnit failed for StartRecording!";
+    return -1;
+  }
   if (fine_audio_buffer_) {
     fine_audio_buffer_->ResetRecord();
   }
@@ -300,14 +324,19 @@ int32_t AudioDeviceIOS::StartRecording() {
 int32_t AudioDeviceIOS::StopRecording() {
   LOGI() << "StopRecording";
   RTC_DCHECK_RUN_ON(thread_);
-  if (!audio_is_initialized_ || !recording_.load()) {
+  if (!recording_is_initialized_ || !recording_.load()) {
     return 0;
   }
   if (!playing_.load()) {
     ShutdownPlayOrRecord();
-    audio_is_initialized_ = false;
+    playout_is_initialized_ = false;
+  } else if (playout_is_initialized_) {
+    // Playout is still active. Restart the audio unit with input disabled
+    // so the microphone is released and the orange mic indicator turns off.
+    RestartAudioUnit(false);
   }
   recording_.store(0, std::memory_order_release);
+  recording_is_initialized_ = false;
   return 0;
 }
 
@@ -588,8 +617,11 @@ void AudioDeviceIOS::HandleSampleRateChange() {
   // Allocate new buffers given the new stream format.
   SetupAudioBuffersForActiveAudioSession();
 
-  // Initialize the audio unit again with the new sample rate.
-  if (!audio_unit_->Initialize(playout_parameters_.sample_rate())) {
+  // Initialize the audio unit again with the new sample rate. Preserve the
+  // current input-enabled state so the mic stays on/off across a sample-rate
+  // or route change.
+  if (!audio_unit_->Initialize(playout_parameters_.sample_rate(),
+                               recording_is_initialized_)) {
     RTCLogError(@"Failed to initialize the audio unit with sample rate: %d",
                 playout_parameters_.sample_rate());
     return;
@@ -711,11 +743,11 @@ void AudioDeviceIOS::SetupAudioBuffersForActiveAudioSession() {
   fine_audio_buffer_.reset(new FineAudioBuffer(audio_device_buffer_));
 }
 
-bool AudioDeviceIOS::CreateAudioUnit() {
+bool AudioDeviceIOS::CreateAudioUnit(bool enable_input) {
   RTC_DCHECK(!audio_unit_);
 
   audio_unit_.reset(new VoiceProcessingAudioUnit(bypass_voice_processing_, this));
-  if (!audio_unit_->Init()) {
+  if (!audio_unit_->Init(enable_input)) {
     audio_unit_.reset();
     return false;
   }
@@ -736,7 +768,7 @@ void AudioDeviceIOS::UpdateAudioUnit(bool can_play_or_record) {
 
   // If we're not initialized we don't need to do anything. Audio unit will
   // be initialized on initialization.
-  if (!audio_is_initialized_) return;
+  if (!playout_is_initialized_ && !recording_is_initialized_) return;
 
   // If we're initialized, we must have an audio unit.
   RTC_DCHECK(audio_unit_);
@@ -774,7 +806,8 @@ void AudioDeviceIOS::UpdateAudioUnit(bool can_play_or_record) {
     RTCLog(@"Initializing audio unit for UpdateAudioUnit");
     ConfigureAudioSession();
     SetupAudioBuffersForActiveAudioSession();
-    if (!audio_unit_->Initialize(playout_parameters_.sample_rate())) {
+    if (!audio_unit_->Initialize(playout_parameters_.sample_rate(),
+                                 recording_is_initialized_)) {
       RTCLogError(@"Failed to initialize audio unit.");
       return;
     }
@@ -864,12 +897,14 @@ void AudioDeviceIOS::UnconfigureAudioSession() {
   RTCLog(@"Unconfigured audio session.");
 }
 
-bool AudioDeviceIOS::InitPlayOrRecord() {
+bool AudioDeviceIOS::InitPlayOrRecord(bool enable_input) {
   LOGI() << "InitPlayOrRecord";
   RTC_DCHECK_RUN_ON(thread_);
 
-  // There should be no audio unit at this point.
-  if (!CreateAudioUnit()) {
+  // There should be no audio unit at this point. Pass enable_input through so
+  // the input bus is only enabled when WebRTC actually wants to record —
+  // avoiding the iOS mic-permission prompt during listen-only setup.
+  if (!CreateAudioUnit(enable_input)) {
     return false;
   }
 
@@ -900,11 +935,56 @@ bool AudioDeviceIOS::InitPlayOrRecord() {
       return false;
     }
     SetupAudioBuffersForActiveAudioSession();
-    audio_unit_->Initialize(playout_parameters_.sample_rate());
+    audio_unit_->Initialize(playout_parameters_.sample_rate(), enable_input);
   }
 
   // Release the lock.
   [session unlockForConfiguration];
+  return true;
+}
+
+bool AudioDeviceIOS::RestartAudioUnit(bool enable_input) {
+  RTC_DCHECK_RUN_ON(thread_);
+  LOGI() << "RestartAudioUnit, enable_input=" << enable_input;
+
+  // No audio unit or it never reached Initialized — nothing to do.
+  if (!audio_unit_ ||
+      audio_unit_->GetState() < VoiceProcessingAudioUnit::kInitialized) {
+    return false;
+  }
+
+  bool was_started = false;
+  if (audio_unit_->GetState() == VoiceProcessingAudioUnit::kStarted) {
+    audio_unit_->Stop();
+    PrepareForNewStart();
+    was_started = true;
+  }
+  if (audio_unit_->GetState() == VoiceProcessingAudioUnit::kInitialized) {
+    audio_unit_->Uninitialize();
+  }
+
+  // Re-initialize with the new enable_input value. Initialize() applies
+  // EnableIO=enable_input on the input bus before AudioUnitInitialize runs;
+  // the input callback and buffer-alloc flag were registered in Init() and
+  // persist across the Uninitialize/Initialize cycle, so audio flows
+  // immediately when transitioning to recording. Audio session category is
+  // left at whatever the caller configured — no in-place category change.
+  if (!audio_unit_->Initialize(playout_parameters_.sample_rate(), enable_input)) {
+    RTCLogError(@"Failed to re-initialize audio unit with sample rate: %d",
+                playout_parameters_.sample_rate());
+    return false;
+  }
+
+  if (was_started) {
+    OSStatus result = audio_unit_->Start();
+    if (result != noErr) {
+      RTC_OBJC_TYPE(RTCAudioSession)* session =
+          [RTC_OBJC_TYPE(RTCAudioSession) sharedInstance];
+      [session notifyAudioUnitStartFailedWithError:result];
+      RTCLogError(@"Failed to restart audio unit, reason %d", (int)result);
+      return false;
+    }
+  }
   return true;
 }
 

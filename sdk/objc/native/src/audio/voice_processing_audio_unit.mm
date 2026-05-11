@@ -86,8 +86,9 @@ VoiceProcessingAudioUnit::~VoiceProcessingAudioUnit() {
 
 const UInt32 VoiceProcessingAudioUnit::kBytesPerSample = 2;
 
-bool VoiceProcessingAudioUnit::Init() {
+bool VoiceProcessingAudioUnit::Init(bool enable_input) {
   RTC_DCHECK_EQ(state_, kInitRequired);
+  RTCLog(@"VoiceProcessingAudioUnit::Init, enable_input=%d", (int)enable_input);
 
   // Create an audio component description to identify the Voice Processing
   // I/O audio unit.
@@ -111,16 +112,22 @@ bool VoiceProcessingAudioUnit::Init() {
     return false;
   }
 
-  // Enable input on the input scope of the input element.
-  UInt32 enable_input = 1;
+  // Enable (or leave disabled) input on the input scope of the input element.
+  // CRITICAL: setting EnableIO=1 on a Voice Processing I/O input bus causes
+  // iOS (via AURemoteIO::SetProperty → AudioSessionRequestRecordPermission)
+  // to immediately prompt the user for microphone permission, even before
+  // AudioUnitInitialize / setActive. Skipping this set when enable_input is
+  // false keeps the unit input-disabled and avoids the prompt. The bus can
+  // still be re-enabled later via Initialize(rate, true) when StartRecording
+  // is invoked.
+  UInt32 enable_input_flag = enable_input ? 1 : 0;
   result = AudioUnitSetProperty(vpio_unit_, kAudioOutputUnitProperty_EnableIO,
-                                kAudioUnitScope_Input, kInputBus, &enable_input,
-                                sizeof(enable_input));
+                                kAudioUnitScope_Input, kInputBus,
+                                &enable_input_flag, sizeof(enable_input_flag));
   if (result != noErr) {
     DisposeAudioUnit();
-    RTCLogError(@"Failed to enable input on input scope of input element. "
-                 "Error=%ld.",
-                (long)result);
+    RTCLogError(@"Failed to set EnableIO=%u on input bus. Error=%ld.",
+                (unsigned)enable_input_flag, (long)result);
     return false;
   }
 
@@ -154,7 +161,10 @@ bool VoiceProcessingAudioUnit::Init() {
   }
 
   // Disable AU buffer allocation for the recorder, we allocate our own.
-  // TODO(henrika): not sure that it actually saves resource to make this call.
+  // Set unconditionally — this property doesn't trigger the mic-permission
+  // prompt by itself (only EnableIO=1 above does), and registering it now
+  // means the input bus is ready for use whenever Initialize(rate, true)
+  // later flips EnableIO back on.
   UInt32 flag = 0;
   result = AudioUnitSetProperty(
       vpio_unit_, kAudioUnitProperty_ShouldAllocateBuffer,
@@ -169,7 +179,9 @@ bool VoiceProcessingAudioUnit::Init() {
 
   // Specify the callback to be called by the I/O thread to us when input audio
   // is available. The recorded samples can then be obtained by calling the
-  // AudioUnitRender() method.
+  // AudioUnitRender() method. Registered unconditionally so audio flows
+  // immediately when the input bus is later enabled, with no need to recreate
+  // the unit.
   AURenderCallbackStruct input_callback;
   input_callback.inputProc = OnDeliverRecordedData;
   input_callback.inputProcRefCon = this;
@@ -193,9 +205,10 @@ VoiceProcessingAudioUnit::State VoiceProcessingAudioUnit::GetState() const {
   return state_;
 }
 
-bool VoiceProcessingAudioUnit::Initialize(Float64 sample_rate) {
+bool VoiceProcessingAudioUnit::Initialize(Float64 sample_rate, bool enable_input) {
   RTC_DCHECK_GE(state_, kUninitialized);
-  RTCLog(@"Initializing audio unit with sample rate: %f", sample_rate);
+  RTCLog(@"Initializing audio unit with sample rate: %f, enable_input=%d",
+         sample_rate, (int)enable_input);
 
   OSStatus result = noErr;
   AudioStreamBasicDescription format = GetFormat(sample_rate);
@@ -203,6 +216,21 @@ bool VoiceProcessingAudioUnit::Initialize(Float64 sample_rate) {
 #if !defined(NDEBUG)
   LogStreamDescription(format);
 #endif
+
+  // Toggle input on/off according to whether WebRTC needs to record. When
+  // disabled, iOS does not prompt for microphone permission and the orange
+  // mic indicator stays off. EnableIO can only be changed while the unit is
+  // uninitialized, which is guaranteed here.
+  UInt32 enable_input_flag = enable_input ? 1 : 0;
+  result = AudioUnitSetProperty(vpio_unit_, kAudioOutputUnitProperty_EnableIO,
+                                kAudioUnitScope_Input, kInputBus,
+                                &enable_input_flag, sizeof(enable_input_flag));
+  if (result != noErr) {
+    DisposeAudioUnit();
+    RTCLogError(@"Failed to set EnableIO on input bus. Error=%ld.",
+                (long)result);
+    return false;
+  }
 
   // Set the format on the output scope of the input element/bus.
   result =

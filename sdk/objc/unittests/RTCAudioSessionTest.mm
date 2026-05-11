@@ -245,7 +245,7 @@
                                                             error:([OCMArg anyObjectRef])])
       .andDo(setActiveBlock);
   OCMExpect([mockAudioSession session]).andReturn(mockAVAudioSession);
-  EXPECT_FALSE([audioSession configureWebRTCSession:&error]);
+  EXPECT_FALSE([audioSession configureWebRTCSession:&error requireInput:YES]);
   EXPECT_EQ(0, audioSession.activationCount);
 
   id session = audioSession.session;

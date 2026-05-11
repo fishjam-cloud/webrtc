@@ -66,16 +66,21 @@ class VoiceProcessingAudioUnit {
   static const UInt32 kBytesPerSample;
 
   // Initializes this class by creating the underlying audio unit instance.
-  // Creates a Voice-Processing I/O unit and configures it for full-duplex
-  // audio. The selected stream format is selected to avoid internal resampling
-  // and to match the 10ms callback rate for WebRTC as well as possible.
-  // Does not intialize the audio unit.
-  bool Init();
+  // Creates a Voice-Processing I/O unit. The selected stream format is selected
+  // to avoid internal resampling and to match the 10ms callback rate for WebRTC
+  // as well as possible. Does not intialize the audio unit.
+  // When enable_input is false, the input bus is left disabled so iOS does not
+  // request microphone permission while just creating the unit. This is
+  // required because AUVoiceIO triggers the mic-permission prompt as soon as
+  // EnableIO=1 is set on the input bus, even before AudioUnitInitialize runs.
+  bool Init(bool enable_input);
 
   VoiceProcessingAudioUnit::State GetState() const;
 
   // Initializes the underlying audio unit with the given sample rate.
-  bool Initialize(Float64 sample_rate);
+  // When enable_input is false, the input bus is disabled so iOS does not
+  // request microphone permission and the orange mic indicator stays off.
+  bool Initialize(Float64 sample_rate, bool enable_input);
 
   // Starts the underlying audio unit.
   OSStatus Start();
