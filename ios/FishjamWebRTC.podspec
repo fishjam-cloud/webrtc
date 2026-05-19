@@ -39,6 +39,6 @@ Pod::Spec.new do |s|
   }
   s.authors          = 'The WebRTC project authors'
   s.source           = { :http => "https://github.com/fishjam-cloud/webrtc/releases/download/v#{s.version}/FishjamWebRTC.xcframework.zip", :flatten => false }
-  s.platforms        = { :ios => '12.0', :osx => '13.0' }
+  s.platforms        = { :ios => '12.0' }
   s.vendored_frameworks = 'WebRTC.xcframework'
 end
