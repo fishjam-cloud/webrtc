@@ -118,6 +118,7 @@ if (is_ios || is_mac) {
       "objc/base/RTCVideoFrame.h",
       "objc/base/RTCVideoFrame.mm",
       "objc/base/RTCVideoFrameBuffer.h",
+      "objc/base/RTCAudioRenderer.h",
       "objc/base/RTCVideoRenderer.h",
       "objc/base/RTCYUVPlanarBuffer.h",
     ]
@@ -871,6 +872,24 @@ if (is_ios || is_mac) {
       ]
     }
 
+    rtc_library("audiorendereradapter_objc") {
+      visibility = [ "*" ]
+      sources = [
+        "objc/api/RTCAudioRendererAdapter+Private.h",
+        "objc/api/RTCAudioRendererAdapter.h",
+        "objc/api/RTCAudioRendererAdapter.mm",
+      ]
+
+      configs += [ "..:common_objc" ]
+      public_configs = [ ":common_config_objc" ]
+
+      deps = [
+        ":base_objc",
+        "../api:libjingle_peerconnection_api",
+        "../api:media_stream_interface",
+      ]
+    }
+
     rtc_library("mediasource_objc") {
       sources = [
         "objc/api/peerconnection/RTCMediaSource+Private.h",
@@ -1046,6 +1065,7 @@ if (is_ios || is_mac) {
 
       deps = [
         ":audio_device_api_objc",
+        ":audiorendereradapter_objc",
         ":base_native_additions_objc",
         ":base_objc",
         ":file_logger_objc",
@@ -1276,6 +1296,7 @@ if (is_ios || is_mac) {
           "objc/base/RTCVideoEncoderSettings.h",
           "objc/base/RTCVideoFrame.h",
           "objc/base/RTCVideoFrameBuffer.h",
+          "objc/base/RTCAudioRenderer.h",
           "objc/base/RTCVideoRenderer.h",
           "objc/base/RTCYUVPlanarBuffer.h",
           "objc/components/audio/RTCAudioDevice.h",
@@ -1478,6 +1499,7 @@ if (is_ios || is_mac) {
           "objc/base/RTCVideoEncoderSettings.h",
           "objc/base/RTCVideoFrame.h",
           "objc/base/RTCVideoFrameBuffer.h",
+          "objc/base/RTCAudioRenderer.h",
           "objc/base/RTCVideoRenderer.h",
           "objc/base/RTCYUVPlanarBuffer.h",
           "objc/components/capturer/RTCCameraVideoCapturer.h",
