@@ -69,11 +69,28 @@ cd ..
 
 **Android AAR** (bundles `classes.jar` + the per-ABI `libjingle_peerconnection_so.so`):
 
+> ⚠️ **Linux-only.** WebRTC's build asserts `host_os == "linux"` for Android targets, so this
+> **cannot** run on the macOS build host — it fails instantly in `gn gen`. Build it in a Linux
+> container. A persistent Docker volume `wrtc-android-vol` holds a `target_os=["android","linux"]`
+> gclient checkout (amd64); the container is ephemeral, the volume is reused.
+
 ```bash
-python3 tools_webrtc/android/build_aar.py --output FishjamWebRTC.aar
+# from the macOS host (Docker Desktop, amd64 emulation):
+docker run --rm --platform linux/amd64 -v wrtc-android-vol:/vol -w /vol/src ubuntu:22.04 bash -c '
+  set -e
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq git python3 python3-setuptools curl xz-utils zip unzip ca-certificates pkg-config >/dev/null
+  export PATH=/vol/src/third_party/depot_tools:$PATH DEPOT_TOOLS_UPDATE=0
+  git remote get-url fishjam >/dev/null 2>&1 || git remote add fishjam https://github.com/fishjam-cloud/webrtc.git
+  git fetch fishjam --quiet && git checkout -f <fishjam-m124-sha>
+  python3 tools_webrtc/android/build_aar.py --output /vol/FishjamWebRTC.aar
+'
+# then copy it out (volume is already android-synced, so no gclient sync needed for same DEPS):
+docker run --rm -v wrtc-android-vol:/vol -v "$PWD":/out alpine cp /vol/FishjamWebRTC.aar /out/
 ```
 
-Output: `FishjamWebRTC.aar` in the gclient src root.
+Output: `FishjamWebRTC.aar` (~45 MB, all four ABIs). The whole build runs under amd64 emulation, so
+it is slow (~30–40 min).
 
 ### 2. Validate the patches are in the binaries
 
