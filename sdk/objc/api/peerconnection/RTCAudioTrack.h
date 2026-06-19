@@ -14,6 +14,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class RTC_OBJC_TYPE(RTCAudioSource);
+@protocol RTC_OBJC_TYPE
+(RTCAudioRenderer);
 
 RTC_OBJC_EXPORT
 @interface RTC_OBJC_TYPE (RTCAudioTrack) : RTC_OBJC_TYPE(RTCMediaStreamTrack)
@@ -22,6 +24,14 @@ RTC_OBJC_EXPORT
 
 /** The audio source for this audio track. */
 @property(nonatomic, readonly) RTC_OBJC_TYPE(RTCAudioSource) * source;
+
+/** Register a renderer that will receive all decoded PCM audio from this
+ *  track. Only meaningful for remote audio tracks. Adding the same renderer
+ *  twice is a no-op. */
+- (void)addRenderer:(id<RTC_OBJC_TYPE(RTCAudioRenderer)>)renderer;
+
+/** Deregister a renderer previously added with addRenderer:. */
+- (void)removeRenderer:(id<RTC_OBJC_TYPE(RTCAudioRenderer)>)renderer;
 
 @end
 
