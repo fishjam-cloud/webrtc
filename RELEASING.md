@@ -49,14 +49,20 @@ SRC_SHA=$(git rev-parse --short HEAD)   # record for the release notes
 
 **iOS xcframework:**
 
+> ⚠️ **Toolchain:** m124 does **not** build with Xcode 26 (SDK 26.x) — UIKit's
+> `UIUtilities/UIDefines.h` is not found and the `RTCAudioSession*` objc files fail to compile
+> within ~30s. Build with Xcode 16.x. If it isn't the active `xcode-select`, prefix the build with
+> `DEVELOPER_DIR`, e.g. `export DEVELOPER_DIR=/Applications/Xcode-16.4.0.app/Contents/Developer`.
+
 ```bash
 python3 tools_webrtc/ios/build_ios_libs.py \
     --build_config release \
     --arch device:arm64 simulator:arm64 simulator:x64 \
     -r 0
 
+# LICENSE.md is generated inside WebRTC.xcframework/, so zipping the framework includes it.
 cd out_ios_libs
-zip -r --symlinks FishjamWebRTC.xcframework.zip WebRTC.xcframework LICENSE.md
+zip -qr --symlinks FishjamWebRTC.xcframework.zip WebRTC.xcframework
 shasum -a 256 FishjamWebRTC.xcframework.zip   # note this for Package.swift
 cd ..
 ```
@@ -73,16 +79,23 @@ Output: `FishjamWebRTC.aar` in the gclient src root.
 
 Update this fingerprint check to match the patch set being released. The current
 `fishjam-m124` set is the `defer mic permission` change plus the audio-track sink
-(iOS `RTCAudioRenderer`, Android `AudioTrackSink`). These symbols survive stripping.
+(iOS `RTCAudioRenderer`, Android `AudioTrackSink`).
 
-**iOS** — every slice must print the symbol:
+**iOS** — the release framework is **stripped** (only ~190 symbols are exported), so `nm -gU`
+won't find the patch symbols. Grep the binary's string table instead — every slice must hit both
+patches:
 
 ```bash
 for slice in out_ios_libs/WebRTC.xcframework/*/WebRTC.framework/WebRTC; do
-  echo "=== $slice ==="
-  nm -gU "$slice" | c++filt | grep -E "AudioDeviceIOS::(RestartAudioUnit|CreateAudioUnit\(bool\)|InitPlayOrRecord\(bool\))"
+  echo "=== $slice ($(lipo -archs "$slice")) ==="
+  for needle in RestartAudioUnit RTCAudioRendererAdapter addRenderer:; do
+    echo "  $needle: $(strings -a "$slice" | grep -cF "$needle")"
+  done
 done
 ```
+
+Each `needle` count must be non-zero in every slice (`RestartAudioUnit` = defer-mic patch,
+`RTCAudioRendererAdapter`/`addRenderer:` = audio-sink patch).
 
 **Android** — the AAR must contain the audio-sink Java API and all four ABIs:
 
@@ -98,12 +111,13 @@ If anything is missing, do not release.
 git checkout master
 ```
 
-Bump `s.version` in `ios/FishjamWebRTC.podspec` to the new version (the `:http` URL interpolates
-`s.version`, so no other edit needed). The JitPack `android/build.gradle` reads the version from the
-tag automatically — no edit there.
-
-> Optional: if SPM is in use, also update `url` + `checksum` in `Package.swift` with the new
-> release URL and the `shasum` from step 1.
+- `ios/FishjamWebRTC.podspec`: bump `s.version` (the `:http` URL interpolates `s.version`, so no
+  other edit needed).
+- `Package.swift` (SPM): bump the version in the binary target `url` **and** set `checksum` to the
+  `shasum -a 256 FishjamWebRTC.xcframework.zip` from step 1. SPM can't interpolate the version, so
+  both must be edited by hand every release.
+- `android/build.gradle` (JitPack): nothing to edit — it reads the version from the tag (`$VERSION`)
+  automatically.
 
 Commit and push `master`.
 
@@ -175,9 +189,9 @@ end
 EOF
 pod install --verbose
 
-# Re-run the iOS symbol check against the binary CocoaPods fetched:
+# Re-run the iOS string check against the binary CocoaPods fetched:
 for slice in Pods/FishjamWebRTC/WebRTC.xcframework/*/WebRTC.framework/WebRTC; do
-  nm -gU "$slice" | c++filt | grep "AudioDeviceIOS::RestartAudioUnit"
+  strings -a "$slice" | grep -cF "RTCAudioRendererAdapter"
 done
 ```
 
