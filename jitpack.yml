@@ -1,0 +1,11 @@
+# JitPack build config for FishjamWebRTC (Android).
+#
+# JitPack checks out the requested tag, then runs the install command below.
+# The Gradle project in `android/` downloads the prebuilt FishjamWebRTC.aar from
+# this tag's GitHub release and publishes it to the local Maven repo, which
+# JitPack then serves. `$VERSION` (the tag) is provided by JitPack and read by
+# android/build.gradle.
+jdk:
+  - openjdk11
+install:
+  - cd android && ./gradlew --no-daemon publishToMavenLocal
