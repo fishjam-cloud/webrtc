@@ -468,6 +468,19 @@ public class PeerConnectionFactory {
     return new AudioSource(nativeCreateAudioSource(nativeFactory, constraints));
   }
 
+  /**
+   * Creates an ExternalAudioSource that accepts application-pushed PCM instead
+   * of capturing the microphone. sampleRateHz must be a multiple of 100;
+   * channelCount must be 1 or 2. Pass the source to createAudioTrack() to
+   * create a sendable track.
+   */
+  public ExternalAudioSource createExternalAudioSource(int sampleRateHz, int channelCount) {
+    checkPeerConnectionFactoryExists();
+    return new ExternalAudioSource(
+        nativeCreateExternalAudioSource(nativeFactory, sampleRateHz, channelCount), sampleRateHz,
+        channelCount);
+  }
+
   public AudioTrack createAudioTrack(String id, AudioSource source) {
     checkPeerConnectionFactoryExists();
     return new AudioTrack(nativeCreateAudioTrack(nativeFactory, id, source.getNativeAudioSource()));
@@ -618,6 +631,8 @@ public class PeerConnectionFactory {
   private static native long nativeCreateVideoTrack(
       long factory, String id, long nativeVideoSource);
   private static native long nativeCreateAudioSource(long factory, MediaConstraints constraints);
+  private static native long nativeCreateExternalAudioSource(
+      long factory, int sampleRateHz, int channelCount);
   private static native long nativeCreateAudioTrack(long factory, String id, long nativeSource);
   private static native boolean nativeStartAecDump(
       long factory, int file_descriptor, int filesize_limit_bytes);
