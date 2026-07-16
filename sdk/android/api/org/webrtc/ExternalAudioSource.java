@@ -54,5 +54,5 @@ public class ExternalAudioSource extends AudioSource {
   }
 
   private static native void nativePushAudioFrame(
-      long nativeSource, ByteBuffer directPcmBuffer, int numberOfFrames);
+      long sourcePointer, ByteBuffer directPcmBuffer, int numberOfFrames);
 }
