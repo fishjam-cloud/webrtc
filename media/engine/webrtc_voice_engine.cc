@@ -886,6 +886,15 @@ class WebRtcVoiceSendChannel::WebRtcAudioSendStream : public AudioSource::Sink {
     ReconfigureAudioSendStream(nullptr);
   }
 
+  void SetExternalAudioInjection(bool enabled) {
+    RTC_DCHECK_RUN_ON(&worker_thread_checker_);
+    if (config_.external_audio_injection == enabled) {
+      return;
+    }
+    config_.external_audio_injection = enabled;
+    ReconfigureAudioSendStream(nullptr);
+  }
+
   void SetAudioNetworkAdaptorConfig(
       const absl::optional<std::string>& audio_network_adaptor_config) {
     RTC_DCHECK_RUN_ON(&worker_thread_checker_);
@@ -1511,6 +1520,15 @@ bool WebRtcVoiceSendChannel::SetAudioSend(uint32_t ssrc,
   RTC_DCHECK_RUN_ON(worker_thread_);
   // TODO(solenberg): The state change should be fully rolled back if any one of
   //                  these calls fail.
+  // Mark the stream as externally injected before attaching the source, so
+  // that it does not register for audio device module fan-out when the
+  // source attachment starts it.
+  if (options && options->external_audio_injection.value_or(false)) {
+    auto it = send_streams_.find(ssrc);
+    if (it != send_streams_.end()) {
+      it->second->SetExternalAudioInjection(true);
+    }
+  }
   if (!SetLocalSource(ssrc, source)) {
     return false;
   }

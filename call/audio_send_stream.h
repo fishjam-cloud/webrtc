@@ -124,6 +124,12 @@ class AudioSendStream : public AudioSender {
     double bitrate_priority = 1.0;
     bool has_dscp = false;
 
+    // When true, this stream's audio is injected by the application through
+    // the track's source (see ExternalAudioSource) instead of being captured
+    // by the audio device module: the stream is excluded from the ADM
+    // recording fan-out and does not trigger audio capture.
+    bool external_audio_injection = false;
+
     // Defines whether to turn on audio network adaptor, and defines its config
     // string.
     absl::optional<std::string> audio_network_adaptor_config;

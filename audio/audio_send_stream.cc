@@ -342,6 +342,14 @@ void AudioSendStream::ConfigureStream(
 
   config_ = new_config;
 
+  // An externally injected stream must not take part in the audio device
+  // module recording fan-out; drop the registration if the flag arrived only
+  // after Start() had already registered the stream.
+  if (config_.external_audio_injection && registered_with_audio_state_) {
+    audio_state()->RemoveSendingStream(this);
+    registered_with_audio_state_ = false;
+  }
+
   webrtc::InvokeSetParametersCallback(callback, webrtc::RTCError::OK());
 }
 
@@ -363,8 +371,11 @@ void AudioSendStream::Start() {
   }
   channel_send_->StartSend();
   sending_ = true;
-  audio_state()->AddSendingStream(this, encoder_sample_rate_hz_,
-                                  encoder_num_channels_);
+  if (!config_.external_audio_injection) {
+    audio_state()->AddSendingStream(this, encoder_sample_rate_hz_,
+                                    encoder_num_channels_);
+    registered_with_audio_state_ = true;
+  }
 }
 
 void AudioSendStream::Stop() {
@@ -376,7 +387,10 @@ void AudioSendStream::Stop() {
   RemoveBitrateObserver();
   channel_send_->StopSend();
   sending_ = false;
-  audio_state()->RemoveSendingStream(this);
+  if (registered_with_audio_state_) {
+    audio_state()->RemoveSendingStream(this);
+    registered_with_audio_state_ = false;
+  }
 }
 
 void AudioSendStream::SendAudioData(std::unique_ptr<AudioFrame> audio_frame) {
@@ -560,7 +574,7 @@ void AudioSendStream::StoreEncoderProperties(int sample_rate_hz,
                                              size_t num_channels) {
   encoder_sample_rate_hz_ = sample_rate_hz;
   encoder_num_channels_ = num_channels;
-  if (sending_) {
+  if (sending_ && registered_with_audio_state_) {
     // Update AudioState's information about the stream.
     audio_state()->AddSendingStream(this, sample_rate_hz, num_channels);
   }

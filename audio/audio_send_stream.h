@@ -178,6 +178,11 @@ class AudioSendStream final : public webrtc::AudioSendStream,
   int encoder_sample_rate_hz_ RTC_GUARDED_BY(worker_thread_checker_) = 0;
   size_t encoder_num_channels_ RTC_GUARDED_BY(worker_thread_checker_) = 0;
   bool sending_ RTC_GUARDED_BY(worker_thread_checker_) = false;
+  // Whether this stream is currently registered with AudioState as a sending
+  // stream (and thereby part of the audio device module recording fan-out).
+  // Streams with config_.external_audio_injection stay unregistered.
+  bool registered_with_audio_state_ RTC_GUARDED_BY(worker_thread_checker_) =
+      false;
   mutable Mutex audio_level_lock_;
   // Keeps track of audio level, total audio energy and total samples duration.
   // https://w3c.github.io/webrtc-stats/#dom-rtcaudiohandlerstats-totalaudioenergy

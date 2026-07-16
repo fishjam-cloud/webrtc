@@ -22,6 +22,7 @@
 #include "modules/audio_device/include/audio_device.h"
 #include "modules/audio_processing/include/audio_processing.h"
 #include "modules/utility/include/jvm_android.h"
+#include "pc/external_audio_source.h"
 #include "rtc_base/event_tracer.h"
 #include "rtc_base/physical_socket_server.h"
 #include "rtc_base/thread.h"
@@ -367,6 +368,16 @@ static jlong JNI_PeerConnectionFactory_CreateAudioSource(
   rtc::scoped_refptr<AudioSourceInterface> source(
       PeerConnectionFactoryFromJava(native_factory)
           ->CreateAudioSource(options));
+  return jlongFromPointer(source.release());
+}
+
+static jlong JNI_PeerConnectionFactory_CreateExternalAudioSource(
+    JNIEnv* jni,
+    jlong /* native_factory */,
+    jint sample_rate_hz,
+    jint channel_count) {
+  rtc::scoped_refptr<ExternalAudioSource> source = ExternalAudioSource::Create(
+      sample_rate_hz, static_cast<size_t>(channel_count));
   return jlongFromPointer(source.release());
 }
 

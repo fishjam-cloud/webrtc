@@ -18,6 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class RTC_OBJC_TYPE(RTCAudioSource);
 @class RTC_OBJC_TYPE(RTCAudioTrack);
 @class RTC_OBJC_TYPE(RTCConfiguration);
+@class RTC_OBJC_TYPE(RTCExternalAudioSource);
 @class RTC_OBJC_TYPE(RTCMediaConstraints);
 @class RTC_OBJC_TYPE(RTCMediaStream);
 @class RTC_OBJC_TYPE(RTCPeerConnection);
@@ -67,6 +68,15 @@ RTC_OBJC_EXPORT
 /** Initialize an RTCAudioSource with constraints. */
 - (RTC_OBJC_TYPE(RTCAudioSource) *)audioSourceWithConstraints:
     (nullable RTC_OBJC_TYPE(RTCMediaConstraints) *)constraints;
+
+/** Initialize an RTCExternalAudioSource that accepts application-pushed PCM
+ * instead of capturing the microphone. sampleRateHz must be a multiple of
+ * 100; channelCount must be 1 or 2. Pass the source to
+ * audioTrackWithSource:trackId: to create a sendable track.
+ */
+- (RTC_OBJC_TYPE(RTCExternalAudioSource) *)
+    externalAudioSourceWithSampleRateHz:(int)sampleRateHz
+                           channelCount:(NSInteger)channelCount;
 
 /** Initialize an RTCAudioTrack with an id. Convenience ctor to use an audio source
  * with no constraints.
