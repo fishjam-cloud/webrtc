@@ -55,6 +55,7 @@ void AudioOptions::SetAll(const AudioOptions& change) {
   SetFrom(&audio_network_adaptor, change.audio_network_adaptor);
   SetFrom(&audio_network_adaptor_config, change.audio_network_adaptor_config);
   SetFrom(&init_recording_on_send, change.init_recording_on_send);
+  SetFrom(&external_audio_injection, change.external_audio_injection);
 }
 
 bool AudioOptions::operator==(const AudioOptions& o) const {
@@ -73,7 +74,8 @@ bool AudioOptions::operator==(const AudioOptions& o) const {
              o.audio_jitter_buffer_min_delay_ms &&
          audio_network_adaptor == o.audio_network_adaptor &&
          audio_network_adaptor_config == o.audio_network_adaptor_config &&
-         init_recording_on_send == o.init_recording_on_send;
+         init_recording_on_send == o.init_recording_on_send &&
+         external_audio_injection == o.external_audio_injection;
 }
 
 std::string AudioOptions::ToString() const {
@@ -97,6 +99,7 @@ std::string AudioOptions::ToString() const {
                 audio_jitter_buffer_min_delay_ms);
   ToStringIfSet(&result, "audio_network_adaptor", audio_network_adaptor);
   ToStringIfSet(&result, "init_recording_on_send", init_recording_on_send);
+  ToStringIfSet(&result, "external_audio_injection", external_audio_injection);
   result << "}";
   return result.str();
 }

@@ -68,6 +68,11 @@ struct RTC_EXPORT AudioOptions {
   // true.
   // TODO(webrtc:13566): Remove this option. See issue for details.
   absl::optional<bool> init_recording_on_send;
+  // Marks audio that the application injects through an ExternalAudioSource
+  // instead of capturing it with the audio device module. The send stream is
+  // then excluded from the ADM recording fan-out and does not engage audio
+  // capture.
+  absl::optional<bool> external_audio_injection;
 };
 
 }  // namespace cricket

@@ -1062,6 +1062,23 @@ rtc_source_set("local_audio_source") {
     "../api:scoped_refptr",
   ]
 }
+rtc_source_set("external_audio_source") {
+  visibility = [ "*" ]
+  sources = [
+    "external_audio_source.cc",
+    "external_audio_source.h",
+  ]
+  deps = [
+    "../api:audio_options_api",
+    "../api:media_stream_interface",
+    "../api:scoped_refptr",
+    "../rtc_base:checks",
+    "../rtc_base:macromagic",
+    "../rtc_base:timeutils",
+    "../rtc_base/synchronization:mutex",
+  ]
+  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
+}
 rtc_source_set("peer_connection") {
   visibility = [ ":*" ]
   sources = [
