@@ -17,6 +17,7 @@
 
 #import "RTCAudioSource+Private.h"
 #import "RTCAudioTrack+Private.h"
+#import "RTCExternalAudioSource+Private.h"
 #import "RTCMediaConstraints+Private.h"
 #import "RTCMediaStream+Private.h"
 #import "RTCPeerConnection+Private.h"
@@ -242,6 +243,15 @@
   rtc::scoped_refptr<webrtc::AudioSourceInterface> source =
       _nativeFactory->CreateAudioSource(options);
   return [[RTC_OBJC_TYPE(RTCAudioSource) alloc] initWithFactory:self nativeAudioSource:source];
+}
+
+- (RTC_OBJC_TYPE(RTCExternalAudioSource) *)
+    externalAudioSourceWithSampleRateHz:(int)sampleRateHz
+                           channelCount:(NSInteger)channelCount {
+  rtc::scoped_refptr<webrtc::ExternalAudioSource> source =
+      webrtc::ExternalAudioSource::Create(sampleRateHz, static_cast<size_t>(channelCount));
+  return [[RTC_OBJC_TYPE(RTCExternalAudioSource) alloc] initWithFactory:self
+                                               nativeExternalAudioSource:source];
 }
 
 - (RTC_OBJC_TYPE(RTCAudioTrack) *)audioTrackWithTrackId:(NSString *)trackId {
