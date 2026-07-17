@@ -95,29 +95,54 @@ it is slow (~30–40 min).
 ### 2. Validate the patches are in the binaries
 
 Update this fingerprint check to match the patch set being released. The current
-`fishjam-m124` set is the `defer mic permission` change plus the audio-track sink
-(iOS `RTCAudioRenderer`, Android `AudioTrackSink`).
+`fishjam-m124` set is the `defer mic permission` change, the audio-track sink
+(iOS `RTCAudioRenderer`, Android `AudioTrackSink`), and the external audio source
+(iOS `RTCExternalAudioSource`, Android `ExternalAudioSource`).
+
+> ⚠️ **Build both artifacts from the same commit** — the merged `fishjam-m124` SHA. Do not mix an
+> iOS build from one commit with an Android build from another, even when the source trees are
+> identical: the WebRTC build is **not** bit-reproducible (embedded paths/timestamps differ), so
+> "same tree ⇒ same binary" is not a safe argument, and the release notes' `source:` line must be
+> literally true for both binaries.
+
+> ⚠️ **Delete stale artifacts before building.** `FishjamWebRTC.xcframework.zip` is not cleaned by
+> the build (only `WebRTC.xcframework/` is regenerated), so a zip from a previous release will sit
+> next to a fresh framework looking perfectly plausible. Shipping it silently re-releases the old
+> binary under the new version — and its checksum will still "validate" because it matches the old
+> `Package.swift`. `rm -rf out_ios_libs` before the iOS build, and remove any previous
+> `FishjamWebRTC.aar` before the Android build.
 
 **iOS** — the release framework is **stripped** (only ~190 symbols are exported), so `nm -gU`
-won't find the patch symbols. Grep the binary's string table instead — every slice must hit both
-patches:
+won't find the patch symbols. Grep the binary's string table instead — every slice must hit every
+patch:
 
 ```bash
 for slice in out_ios_libs/WebRTC.xcframework/*/WebRTC.framework/WebRTC; do
   echo "=== $slice ($(lipo -archs "$slice")) ==="
-  for needle in RestartAudioUnit RTCAudioRendererAdapter addRenderer:; do
+  for needle in RestartAudioUnit RTCAudioRendererAdapter addRenderer: RTCExternalAudioSource external_audio_injection; do
     echo "  $needle: $(strings -a "$slice" | grep -cF "$needle")"
   done
 done
 ```
 
 Each `needle` count must be non-zero in every slice (`RestartAudioUnit` = defer-mic patch,
-`RTCAudioRendererAdapter`/`addRenderer:` = audio-sink patch).
+`RTCAudioRendererAdapter`/`addRenderer:` = audio-sink patch, `RTCExternalAudioSource` = the ObjC
+external-audio API, `external_audio_injection` = the core `AudioOptions` flag that keeps an
+externally-fed send stream out of the ADM recording fan-out).
 
-**Android** — the AAR must contain the audio-sink Java API and all four ABIs:
+**Android** — the AAR must contain the Java API and all four ABIs. The Java classes live **inside
+`classes.jar`**, not at the AAR's top level, so they must be checked there — grepping the AAR
+listing for `org/webrtc/...` silently never matches:
 
 ```bash
-unzip -l FishjamWebRTC.aar | grep -E "org/webrtc/AudioTrackSink|libjingle_peerconnection_so.so"
+unzip -l FishjamWebRTC.aar | grep -c "libjingle_peerconnection_so.so"   # expect 4 (one per ABI)
+
+unzip -p FishjamWebRTC.aar classes.jar > /tmp/fwrtc-classes.jar
+unzip -l /tmp/fwrtc-classes.jar | grep -E "org/webrtc/(AudioTrackSink|ExternalAudioSource)"
+
+# Native side of the patches (any ABI; arm64-v8a shown):
+unzip -p FishjamWebRTC.aar jni/arm64-v8a/libjingle_peerconnection_so.so > /tmp/fwrtc.so
+strings -a /tmp/fwrtc.so | grep -E "Java_org_webrtc_ExternalAudioSource_nativePushAudioFrame|external_audio_injection"
 ```
 
 If anything is missing, do not release.
@@ -190,35 +215,50 @@ configuration is needed — the repo's `jitpack.yml` drives it.)
 
 ### 7. Smoke-test the published packages
 
-**iOS** (CDN propagation takes a few minutes):
+**iOS.** The spec becomes fetchable on the CDN almost immediately, but CocoaPods resolves through a
+sharded **version index** that lags by a few minutes — until it catches up, `pod install` fails with
+"None of your spec sources contain a spec satisfying the dependency" even though the publish
+succeeded. Check the index rather than guessing:
 
 ```bash
-pod trunk info FishjamWebRTC
-pod repo update
+pod trunk info FishjamWebRTC   # authoritative: is the version published?
 
+# The CDN shard is derived from the md5 of the pod name (FishjamWebRTC -> 8/0/7):
+H=$(printf 'FishjamWebRTC' | md5 -q); A=${H:0:1}; B=${H:1:1}; C=${H:2:1}
+curl -sSL "https://cdn.cocoapods.org/all_pods_versions_${A}_${B}_${C}.txt" | grep "^FishjamWebRTC/"
+# ^ the new version must appear here before `pod install` can resolve it.
+
+pod repo update
 mkdir /tmp/fwrtc-smoke && cd /tmp/fwrtc-smoke
 cat > Podfile <<'EOF'
 platform :ios, '13.4'
 use_frameworks!
 target 'Smoke' do
-  pod 'FishjamWebRTC', '124.0.2.2'
+  pod 'FishjamWebRTC', '124.0.2.3'
 end
 EOF
 pod install --verbose
 
 # Re-run the iOS string check against the binary CocoaPods fetched:
 for slice in Pods/FishjamWebRTC/WebRTC.xcframework/*/WebRTC.framework/WebRTC; do
-  strings -a "$slice" | grep -cF "RTCAudioRendererAdapter"
+  strings -a "$slice" | grep -cF "RTCExternalAudioSource"
 done
 ```
 
-**Android** — resolve the JitPack artifact and confirm the ABIs/API are inside:
+**Android** — resolve the JitPack artifact and confirm it is byte-identical to what was released,
+with the ABIs/API inside:
 
 ```bash
 cd /tmp && curl -sSL \
-  "https://jitpack.io/com/github/fishjam-cloud/webrtc/v124.0.2.2/webrtc-v124.0.2.2.aar" \
+  "https://jitpack.io/com/github/fishjam-cloud/webrtc/v124.0.2.3/webrtc-v124.0.2.3.aar" \
   -o fwrtc.aar
-unzip -l fwrtc.aar | grep -E "org/webrtc/AudioTrackSink|libjingle_peerconnection_so.so"
+
+# JitPack republishes the release asset verbatim; this must match the sha256 of the AAR you uploaded.
+shasum -a 256 fwrtc.aar
+
+unzip -l fwrtc.aar | grep -c "libjingle_peerconnection_so.so"        # expect 4
+unzip -p fwrtc.aar classes.jar > /tmp/smoke-classes.jar
+unzip -l /tmp/smoke-classes.jar | grep -E "org/webrtc/(AudioTrackSink|ExternalAudioSource)"
 ```
 
 ## Rollback
