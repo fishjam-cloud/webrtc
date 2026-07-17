@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'FishjamWebRTC'
-  s.version          = '124.0.2.2'
+  s.version          = '124.0.2.3'
   s.summary          = 'WebRTC build provided by Fishjam'
   s.description      = 'WebRTC build used by Fishjam React Native WebRTC.'
   s.homepage         = 'https://github.com/fishjam-cloud/webrtc'

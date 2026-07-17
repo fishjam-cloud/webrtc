@@ -17,8 +17,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "WebRTC",
-            url: "https://github.com/fishjam-cloud/webrtc/releases/download/v124.0.2.2/FishjamWebRTC.xcframework.zip",
-            checksum: "7e0dbec3dc224c0693ff42598ba79d14545d47b0cf8e99f330f2711bbd7dd415"
+            url: "https://github.com/fishjam-cloud/webrtc/releases/download/v124.0.2.3/FishjamWebRTC.xcframework.zip",
+            checksum: "7df79c094bcba0b27699608f476eb857e9995c04aa892135283dd6ed6db674db"
         ),
     ]
 )
