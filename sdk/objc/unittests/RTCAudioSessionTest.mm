@@ -45,25 +45,30 @@
 @interface RTCAudioSessionTestDelegate : NSObject <RTC_OBJC_TYPE (RTCAudioSessionDelegate)>
 
 @property (nonatomic, readonly) float outputVolume;
+@property(nonatomic, readonly) NSMutableArray<NSString *> *interruptionEvents;
 
 @end
 
 @implementation RTCAudioSessionTestDelegate
 
 @synthesize outputVolume = _outputVolume;
+@synthesize interruptionEvents = _interruptionEvents;
 
 - (instancetype)init {
   if (self = [super init]) {
     _outputVolume = -1;
+    _interruptionEvents = [NSMutableArray array];
   }
   return self;
 }
 
 - (void)audioSessionDidBeginInterruption:(RTC_OBJC_TYPE(RTCAudioSession) *)session {
+  [_interruptionEvents addObject:@"begin"];
 }
 
 - (void)audioSessionDidEndInterruption:(RTC_OBJC_TYPE(RTCAudioSession) *)session
                    shouldResumeSession:(BOOL)shouldResumeSession {
+  [_interruptionEvents addObject:@"end"];
 }
 
 - (void)audioSessionDidChangeRoute:(RTC_OBJC_TYPE(RTCAudioSession) *)session
@@ -210,6 +215,21 @@
   EXPECT_EQ(1, audioSession.activationCount);
   [audioSession audioSessionDidDeactivate:[AVAudioSession sharedInstance]];
   EXPECT_EQ(0, audioSession.activationCount);
+}
+
+- (void)testExternalActivationAndDeactivationReportInterruptions {
+  RTC_OBJC_TYPE(RTCAudioSession) *audioSession = [RTC_OBJC_TYPE(RTCAudioSession) sharedInstance];
+  RTCAudioSessionTestDelegate *delegate = [[RTCAudioSessionTestDelegate alloc] init];
+  [audioSession addDelegate:delegate];
+
+  [audioSession audioSessionDidActivate:[AVAudioSession sharedInstance]];
+  EXPECT_TRUE([delegate.interruptionEvents isEqualToArray:@[ @"begin", @"end" ]]);
+
+  [delegate.interruptionEvents removeAllObjects];
+  [audioSession audioSessionDidDeactivate:[AVAudioSession sharedInstance]];
+  EXPECT_TRUE([delegate.interruptionEvents isEqualToArray:@[ @"begin" ]]);
+
+  [audioSession removeDelegate:delegate];
 }
 
 // TODO(b/298960678): Fix crash when running the test on simulators.
