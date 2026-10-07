@@ -14,18 +14,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class RTC_OBJC_TYPE(RTCAudioSessionConfiguration);
 
-/** Implemented by WebRTC's own audio device only. Unlike the public RTCAudioSessionDelegate
- *  interruption callbacks, these report audioSessionDidActivate: and
- *  audioSessionDidDeactivate:, i.e. the session being changed outside WebRTC (e.g. by CallKit).
- */
-@protocol RTC_OBJC_TYPE
-(RTCAudioSessionExternalActivationDelegate)<NSObject>
-
-    - (void)audioSessionDidActivateExternally : (RTC_OBJC_TYPE(RTCAudioSession) *)session;
-- (void)audioSessionDidDeactivateExternally:(RTC_OBJC_TYPE(RTCAudioSession) *)session;
-
-@end
-
 @interface RTC_OBJC_TYPE (RTCAudioSession)
 ()
 
@@ -101,8 +89,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)notifyDidChangeCanPlayOrRecord:(BOOL)canPlayOrRecord;
 - (void)notifyDidStartPlayOrRecord;
 - (void)notifyDidStopPlayOrRecord;
-- (void)notifyDidActivateExternally;
-- (void)notifyDidDeactivateExternally;
 
 @end
 

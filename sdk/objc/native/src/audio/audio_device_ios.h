@@ -147,8 +147,6 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   void OnValidRouteChange() override;
   void OnCanPlayOrRecordChange(bool can_play_or_record) override;
   void OnChangedOutputVolume() override;
-  void OnExternalActivation() override;
-  void OnExternalDeactivation() override;
 
   // VoiceProcessingAudioUnitObserver methods.
   OSStatus OnDeliverRecordedData(AudioUnitRenderActionFlags* flags,
@@ -175,8 +173,6 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
   void HandlePlayoutGlitchDetected();
   void HandleOutputVolumeChange();
   void HandleAudioUnitRunningStateChange();
-  void HandleExternalActivation();
-  void HandleExternalDeactivation();
 
   // Uses current `playout_parameters_` and `record_parameters_` to inform the
   // audio device buffer (ADB) about our internal audio parameters.
@@ -295,10 +291,6 @@ class AudioDeviceIOS : public AudioDeviceGeneric,
 
   // Set to true if audio session is interrupted, false otherwise.
   bool is_interrupted_;
-
-  // Set while the audio session is deactivated outside WebRTC, e.g. by CallKit
-  // for a held call. The audio unit is not restarted until it is activated.
-  bool session_deactivated_externally_ = false;
 
   // Audio interruption observer instance.
   RTCNativeAudioSessionDelegateAdapter* audio_session_observer_

@@ -32,11 +32,6 @@ class AudioSessionObserver {
 
   virtual void OnChangedOutputVolume() = 0;
 
-  // Called when the audio session is activated or deactivated outside WebRTC,
-  // e.g. by CallKit.
-  virtual void OnExternalActivation() = 0;
-  virtual void OnExternalDeactivation() = 0;
-
  protected:
   virtual ~AudioSessionObserver() {}
 };
