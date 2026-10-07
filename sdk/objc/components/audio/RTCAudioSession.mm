@@ -844,6 +844,7 @@ ABSL_CONST_INIT thread_local bool mutex_locked = false;
     RTCLog(@"Clearing interrupted state due to external activation.");
     self.isInterrupted = NO;
   }
+  [self notifyDidActivateExternally];
   // Treat external audio session activation as an end interruption event.
   [self notifyDidEndInterruptionWithShouldResumeSession:YES];
 }
@@ -855,6 +856,7 @@ ABSL_CONST_INIT thread_local bool mutex_locked = false;
   RTCLog(@"Audio session was externally deactivated.");
   self.isActive = NO;
   [self decrementActivationCount];
+  [self notifyDidDeactivateExternally];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -883,6 +885,26 @@ ABSL_CONST_INIT thread_local bool mutex_locked = false;
           audioUnitStartFailedWithError:[NSError errorWithDomain:kRTCAudioSessionErrorDomain
                                                             code:error
                                                         userInfo:nil]];
+    }
+  }
+}
+
+- (void)notifyDidActivateExternally {
+  for (auto delegate : self.delegates) {
+    SEL sel = @selector(audioSessionDidActivateExternally:);
+    if ([delegate respondsToSelector:sel]) {
+      [(id<RTC_OBJC_TYPE(RTCAudioSessionExternalActivationDelegate)>)delegate
+          audioSessionDidActivateExternally:self];
+    }
+  }
+}
+
+- (void)notifyDidDeactivateExternally {
+  for (auto delegate : self.delegates) {
+    SEL sel = @selector(audioSessionDidDeactivateExternally:);
+    if ([delegate respondsToSelector:sel]) {
+      [(id<RTC_OBJC_TYPE(RTCAudioSessionExternalActivationDelegate)>)delegate
+          audioSessionDidDeactivateExternally:self];
     }
   }
 }

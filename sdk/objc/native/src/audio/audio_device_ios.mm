@@ -387,6 +387,16 @@ void AudioDeviceIOS::OnRunningStateChanged() {
   thread_->PostTask(SafeTask(safety_, [this] { HandleAudioUnitRunningStateChange(); }));
 }
 
+void AudioDeviceIOS::OnExternalActivation() {
+  RTC_DCHECK(thread_);
+  thread_->PostTask(SafeTask(safety_, [this] { HandleExternalActivation(); }));
+}
+
+void AudioDeviceIOS::OnExternalDeactivation() {
+  RTC_DCHECK(thread_);
+  thread_->PostTask(SafeTask(safety_, [this] { HandleExternalDeactivation(); }));
+}
+
 void AudioDeviceIOS::OnCanPlayOrRecordChange(bool can_play_or_record) {
   RTC_DCHECK(thread_);
   thread_->PostTask(SafeTask(
@@ -563,17 +573,36 @@ void AudioDeviceIOS::HandleAudioUnitRunningStateChange() {
       audio_unit_->IsRunning()) {
     return;
   }
-  audio_unit_->Stop();
+  if (!audio_unit_->Stop()) {
+    RTCLogError(@"Failed to stop the externally stopped audio unit. Not restarting it.");
+    return;
+  }
   PrepareForNewStart();
-  RTC_OBJC_TYPE(RTCAudioSession)* session = [RTC_OBJC_TYPE(RTCAudioSession) sharedInstance];
-  // The session was deactivated through RTCAudioSession, e.g. by CallKit for a held call. The
-  // unit is restarted when the session is activated again.
-  if (!session.isActive) {
+  if (session_deactivated_externally_) {
     RTCLog(@"Audio unit was stopped with the audio session.");
     return;
   }
   RTCLog(@"Audio unit was stopped externally. Restarting it.");
-  UpdateAudioUnit(session.canPlayOrRecord);
+  UpdateAudioUnit([RTC_OBJC_TYPE(RTCAudioSession) sharedInstance].canPlayOrRecord);
+}
+
+void AudioDeviceIOS::HandleExternalActivation() {
+  RTC_DCHECK_RUN_ON(thread_);
+  // Posted before the interruption end that restarts the unit.
+  session_deactivated_externally_ = false;
+}
+
+void AudioDeviceIOS::HandleExternalDeactivation() {
+  RTC_DCHECK_RUN_ON(thread_);
+  session_deactivated_externally_ = true;
+  // Stop the unit also when it was restarted before this notification arrived.
+  if (audio_unit_ && audio_unit_->GetState() == VoiceProcessingAudioUnit::kStarted) {
+    RTCLog(@"Stopping the audio unit for external deactivation.");
+    if (!audio_unit_->Stop()) {
+      RTCLogError(@"Failed to stop the audio unit for external deactivation.");
+    }
+    PrepareForNewStart();
+  }
 }
 
 void AudioDeviceIOS::HandleCanPlayOrRecordChange(bool can_play_or_record) {
@@ -927,6 +956,8 @@ void AudioDeviceIOS::UnconfigureAudioSession() {
 bool AudioDeviceIOS::InitPlayOrRecord(bool enable_input) {
   LOGI() << "InitPlayOrRecord";
   RTC_DCHECK_RUN_ON(thread_);
+  // A deactivation reported for a previous call does not apply to this one.
+  session_deactivated_externally_ = false;
 
   // There should be no audio unit at this point. Pass enable_input through so
   // the input bus is only enabled when WebRTC actually wants to record —

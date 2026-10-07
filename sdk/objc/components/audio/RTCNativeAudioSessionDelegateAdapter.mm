@@ -10,9 +10,15 @@
 
 #import "RTCNativeAudioSessionDelegateAdapter.h"
 
+#import "RTCAudioSession+Private.h"
+
 #include "sdk/objc/native/src/audio/audio_session_observer.h"
 
 #import "base/RTCLogging.h"
+
+@interface RTCNativeAudioSessionDelegateAdapter () <
+    RTC_OBJC_TYPE (RTCAudioSessionExternalActivationDelegate)>
+@end
 
 @implementation RTCNativeAudioSessionDelegateAdapter {
   webrtc::AudioSessionObserver *_observer;
@@ -24,6 +30,16 @@
     _observer = observer;
   }
   return self;
+}
+
+#pragma mark - RTC_OBJC_TYPE(RTCAudioSessionExternalActivationDelegate)
+
+- (void)audioSessionDidActivateExternally:(RTC_OBJC_TYPE(RTCAudioSession) *)session {
+  _observer->OnExternalActivation();
+}
+
+- (void)audioSessionDidDeactivateExternally:(RTC_OBJC_TYPE(RTCAudioSession) *)session {
+  _observer->OnExternalDeactivation();
 }
 
 #pragma mark - RTC_OBJC_TYPE(RTCAudioSessionDelegate)
