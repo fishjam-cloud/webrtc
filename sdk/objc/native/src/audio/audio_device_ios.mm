@@ -382,6 +382,11 @@ void AudioDeviceIOS::OnValidRouteChange() {
   thread_->PostTask(SafeTask(safety_, [this] { HandleValidRouteChange(); }));
 }
 
+void AudioDeviceIOS::OnRunningStateChanged() {
+  RTC_DCHECK(thread_);
+  thread_->PostTask(SafeTask(safety_, [this] { HandleAudioUnitRunningStateChange(); }));
+}
+
 void AudioDeviceIOS::OnCanPlayOrRecordChange(bool can_play_or_record) {
   RTC_DCHECK(thread_);
   thread_->PostTask(SafeTask(
@@ -547,6 +552,21 @@ void AudioDeviceIOS::HandleValidRouteChange() {
   RTC_OBJC_TYPE(RTCAudioSession)* session = [RTC_OBJC_TYPE(RTCAudioSession) sharedInstance];
   RTCLog(@"%@", session);
   HandleSampleRateChange();
+}
+
+void AudioDeviceIOS::HandleAudioUnitRunningStateChange() {
+  RTC_DCHECK_RUN_ON(thread_);
+  // Starting and stopping the unit here also lands in this method. A unit that
+  // is not running while marked as started was stopped by the system, for
+  // example because other code deactivated the audio session.
+  if (!audio_unit_ || audio_unit_->GetState() != VoiceProcessingAudioUnit::kStarted ||
+      audio_unit_->IsRunning()) {
+    return;
+  }
+  RTCLog(@"Audio unit was stopped externally. Restarting it.");
+  audio_unit_->Stop();
+  PrepareForNewStart();
+  UpdateAudioUnit([RTC_OBJC_TYPE(RTCAudioSession) sharedInstance].canPlayOrRecord);
 }
 
 void AudioDeviceIOS::HandleCanPlayOrRecordChange(bool can_play_or_record) {
