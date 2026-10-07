@@ -563,10 +563,17 @@ void AudioDeviceIOS::HandleAudioUnitRunningStateChange() {
       audio_unit_->IsRunning()) {
     return;
   }
-  RTCLog(@"Audio unit was stopped externally. Restarting it.");
   audio_unit_->Stop();
   PrepareForNewStart();
-  UpdateAudioUnit([RTC_OBJC_TYPE(RTCAudioSession) sharedInstance].canPlayOrRecord);
+  RTC_OBJC_TYPE(RTCAudioSession)* session = [RTC_OBJC_TYPE(RTCAudioSession) sharedInstance];
+  // The session was deactivated through RTCAudioSession, e.g. by CallKit for a held call. The
+  // unit is restarted when the session is activated again.
+  if (!session.isActive) {
+    RTCLog(@"Audio unit was stopped with the audio session.");
+    return;
+  }
+  RTCLog(@"Audio unit was stopped externally. Restarting it.");
+  UpdateAudioUnit(session.canPlayOrRecord);
 }
 
 void AudioDeviceIOS::HandleCanPlayOrRecordChange(bool can_play_or_record) {

@@ -844,8 +844,6 @@ ABSL_CONST_INIT thread_local bool mutex_locked = false;
     RTCLog(@"Clearing interrupted state due to external activation.");
     self.isInterrupted = NO;
   }
-  RTCLog(@"Resetting the audio unit for external activation.");
-  [self notifyDidBeginInterruption];
   // Treat external audio session activation as an end interruption event.
   [self notifyDidEndInterruptionWithShouldResumeSession:YES];
 }
@@ -857,8 +855,6 @@ ABSL_CONST_INIT thread_local bool mutex_locked = false;
   RTCLog(@"Audio session was externally deactivated.");
   self.isActive = NO;
   [self decrementActivationCount];
-  RTCLog(@"Stopping the audio unit for external deactivation.");
-  [self notifyDidBeginInterruption];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
