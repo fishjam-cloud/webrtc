@@ -556,9 +556,10 @@ void AudioDeviceIOS::HandleValidRouteChange() {
 
 void AudioDeviceIOS::HandleAudioUnitRunningStateChange() {
   RTC_DCHECK_RUN_ON(thread_);
-  // Starting and stopping the unit here also lands in this method. A unit that
-  // is not running while marked as started was stopped by the system, for
-  // example because other code deactivated the audio session.
+  // The listener fires on every start and stop, including WebRTC's own and the
+  // restart below; those runs return here. Only a unit marked as started that
+  // isn't running was stopped by someone else, e.g. other code deactivating the
+  // audio session.
   if (!audio_unit_ || audio_unit_->GetState() != VoiceProcessingAudioUnit::kStarted ||
       audio_unit_->IsRunning()) {
     return;
