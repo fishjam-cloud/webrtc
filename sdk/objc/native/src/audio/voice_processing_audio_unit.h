@@ -34,6 +34,8 @@ class VoiceProcessingAudioUnitObserver {
                                     UInt32 num_frames,
                                     AudioBufferList* io_data) = 0;
 
+  virtual void OnRunningStateChanged() = 0;
+
  protected:
   ~VoiceProcessingAudioUnitObserver() {}
 };
@@ -77,6 +79,8 @@ class VoiceProcessingAudioUnit {
 
   VoiceProcessingAudioUnit::State GetState() const;
 
+  bool IsRunning() const;
+
   // Initializes the underlying audio unit with the given sample rate.
   // When enable_input is false, the input bus is disabled so iOS does not
   // request microphone permission and the orange mic indicator stays off.
@@ -114,6 +118,12 @@ class VoiceProcessingAudioUnit {
                                         UInt32 bus_number,
                                         UInt32 num_frames,
                                         AudioBufferList* io_data);
+
+  static void OnIsRunningChanged(void* in_ref_con,
+                                 AudioUnit audio_unit,
+                                 AudioUnitPropertyID property_id,
+                                 AudioUnitScope scope,
+                                 AudioUnitElement element);
 
   // Notifies observer that samples are needed for playback.
   OSStatus NotifyGetPlayoutData(AudioUnitRenderActionFlags* flags,
