@@ -192,8 +192,7 @@ Publishing the GitHub release runs `.github/workflows/publish-release.yml`:
 - **CocoaPods:** checks that `ios/FishjamWebRTC.podspec` matches the tag and that the release asset
   is downloadable, then runs `pod trunk push ios/FishjamWebRTC.podspec --allow-warnings`. A version
   that is already on trunk is skipped, so re-running is safe.
-- **JitPack:** requests the `.pom` until JitPack has built the tag, then checks that the JitPack AAR
-  is byte-identical to the release asset and has all four ABIs.
+- **JitPack:** requests the `.pom` until JitPack has built the tag.
 
 To re-run it (e.g. after fixing the token), use **Actions → Publish release → Run workflow** on
 `master` with the version (e.g. `124.0.2.4`).

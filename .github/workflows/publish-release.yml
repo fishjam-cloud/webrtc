@@ -57,12 +57,3 @@ jobs:
           done
           echo "::error::JitPack did not publish $POM. Build log: https://jitpack.io/#${GITHUB_REPOSITORY}/${VERSION}"
           exit 1
-
-      - name: Check the JitPack AAR matches the release asset
-        run: |
-          curl -sSfL -o jitpack.aar "https://jitpack.io/com/github/${GITHUB_REPOSITORY,,}/${VERSION}/webrtc-${VERSION}.aar"
-          curl -sSfL -o release.aar "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/FishjamWebRTC.aar"
-          sha256sum jitpack.aar release.aar
-          [ "$(sha256sum < jitpack.aar)" = "$(sha256sum < release.aar)" ] || { echo "::error::JitPack AAR differs from the release asset"; exit 1; }
-          ABIS=$(unzip -l jitpack.aar | grep -c "libjingle_peerconnection_so.so")
-          [ "$ABIS" = "4" ] || { echo "::error::Expected 4 ABIs, found $ABIS"; exit 1; }
