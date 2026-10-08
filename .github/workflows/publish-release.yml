@@ -49,11 +49,18 @@ jobs:
       - name: Trigger the JitPack build
         run: |
           POM="https://jitpack.io/com/github/${GITHUB_REPOSITORY,,}/${VERSION}/webrtc-${VERSION}.pom"
-          for attempt in $(seq 1 20); do
-            CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 600 "$POM" || true)
+          STATUS="https://jitpack.io/api/builds/com.github.${GITHUB_REPOSITORY,,}/${VERSION}"
+          LOG="https://jitpack.io/com/github/${GITHUB_REPOSITORY,,}/${VERSION}/build.log"
+          for attempt in $(seq 1 10); do
+            CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 300 "$POM" || true)
             echo "Attempt $attempt: HTTP $CODE"
             [ "$CODE" = "200" ] && exit 0
+            if curl -sS --max-time 30 "$STATUS" | grep -q '"status" *: *"Error"'; then
+              echo "::error::JitPack build failed. Log: $LOG"
+              curl -sS --max-time 30 "$LOG" | tail -20
+              exit 1
+            fi
             sleep 30
           done
-          echo "::error::JitPack did not publish $POM. Build log: https://jitpack.io/#${GITHUB_REPOSITORY}/${VERSION}"
+          echo "::error::JitPack did not publish $POM. Log: $LOG"
           exit 1

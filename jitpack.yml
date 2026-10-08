@@ -6,6 +6,6 @@
 # JitPack then serves. `$VERSION` (the tag) is provided by JitPack and read by
 # android/build.gradle.
 jdk:
-  - openjdk11
+  - openjdk17
 install:
   - cd android && ./gradlew --no-daemon publishToMavenLocal
