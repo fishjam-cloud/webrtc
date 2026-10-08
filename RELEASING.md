@@ -96,8 +96,9 @@ it is slow (~30–40 min).
 
 Update this fingerprint check to match the patch set being released. The current
 `fishjam-m124` set is the `defer mic permission` change, the audio-track sink
-(iOS `RTCAudioRenderer`, Android `AudioTrackSink`), and the external audio source
-(iOS `RTCExternalAudioSource`, Android `ExternalAudioSource`).
+(iOS `RTCAudioRenderer`, Android `AudioTrackSink`), the external audio source
+(iOS `RTCExternalAudioSource`, Android `ExternalAudioSource`), and the iOS audio unit restart after
+external audio session changes.
 
 > ⚠️ **Build both artifacts from the same commit** — the merged `fishjam-m124` SHA. Do not mix an
 > iOS build from one commit with an Android build from another, even when the source trees are
@@ -119,7 +120,7 @@ patch:
 ```bash
 for slice in out_ios_libs/WebRTC.xcframework/*/WebRTC.framework/WebRTC; do
   echo "=== $slice ($(lipo -archs "$slice")) ==="
-  for needle in RestartAudioUnit RTCAudioRendererAdapter addRenderer: RTCExternalAudioSource external_audio_injection; do
+  for needle in RestartAudioUnit RTCAudioRendererAdapter addRenderer: RTCExternalAudioSource external_audio_injection "stopped externally"; do
     echo "  $needle: $(strings -a "$slice" | grep -cF "$needle")"
   done
 done
@@ -128,7 +129,8 @@ done
 Each `needle` count must be non-zero in every slice (`RestartAudioUnit` = defer-mic patch,
 `RTCAudioRendererAdapter`/`addRenderer:` = audio-sink patch, `RTCExternalAudioSource` = the ObjC
 external-audio API, `external_audio_injection` = the core `AudioOptions` flag that keeps an
-externally-fed send stream out of the ADM recording fan-out).
+externally-fed send stream out of the ADM recording fan-out, `stopped externally` = the restart of an
+audio unit stopped by an external audio session change).
 
 **Android** — the AAR must contain the Java API and all four ABIs. The Java classes live **inside
 `classes.jar`**, not at the AAR's top level, so they must be checked there — grepping the AAR
