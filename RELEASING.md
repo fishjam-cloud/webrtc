@@ -185,35 +185,42 @@ gh release create v124.0.2.2 \
 Asset names must be exactly `FishjamWebRTC.xcframework.zip` and `FishjamWebRTC.aar` — the podspec
 URL and `android/build.gradle` download URL depend on them.
 
-### 5. Publish iOS to CocoaPods trunk
+### 5–6. Publish to CocoaPods and JitPack (automatic)
 
-One-time, per identity:
+Publishing the GitHub release runs `.github/workflows/publish-release.yml`:
+
+- **CocoaPods:** checks that `ios/FishjamWebRTC.podspec` matches the tag and that the release asset
+  is downloadable, then runs `pod trunk push ios/FishjamWebRTC.podspec --allow-warnings`. A version
+  that is already on trunk is skipped, so re-running is safe.
+- **JitPack:** requests the `.pom` until JitPack has built the tag, then checks that the JitPack AAR
+  is byte-identical to the release asset and has all four ABIs.
+
+To re-run it (e.g. after fixing the token), use **Actions → Publish release → Run workflow** on
+`master` with the version (e.g. `124.0.2.4`).
+
+**One-time setup: the CocoaPods token.** The workflow pushes as whichever trunk account owns the
+`COCOAPODS_TRUNK_TOKEN` repository secret. Use a shared team address rather than a personal one, so
+releases don't depend on one person:
 
 ```bash
-pod trunk register milosz.filimowski@swmansion.com 'Milosz Filimowski'
-# click the email confirmation link
+pod trunk register <team-address> 'Fishjam'     # then click the email confirmation link
+# an existing owner of the pod adds the account, once:
+pod trunk add-owner FishjamWebRTC <team-address>
+# the token is the password of the trunk.cocoapods.org entry:
+grep -A2 trunk.cocoapods.org ~/.netrc
 ```
 
-After the GitHub release asset is live (so lint can fetch it):
+A repository admin stores that token as the `COCOAPODS_TRUNK_TOKEN` secret (Settings → Secrets and
+variables → Actions). Trunk sessions can expire; if the push fails with an authentication error,
+register again and update the secret.
+
+**Manual fallback** (from a `master` checkout, as a trunk owner, after the release asset is live):
 
 ```bash
-git checkout master
 pod spec lint ios/FishjamWebRTC.podspec --allow-warnings
 pod trunk push ios/FishjamWebRTC.podspec --allow-warnings
+curl -sS "https://jitpack.io/com/github/fishjam-cloud/webrtc/v124.0.2.4/webrtc-v124.0.2.4.pom" -o /dev/null -w "%{http_code}\n"
 ```
-
-### 6. Trigger the JitPack (Android) build
-
-JitPack builds lazily on first request. Force it now to surface errors and warm the cache:
-
-```bash
-# Triggers a build and streams the log; non-zero exit on build failure.
-curl -sS "https://jitpack.io/com/github/fishjam-cloud/webrtc/v124.0.2.2/webrtc-v124.0.2.2.pom" -o /dev/null -w "%{http_code}\n"
-```
-
-Or open `https://jitpack.io/#fishjam-cloud/webrtc/v124.0.2.2` and click **Get it** to watch the log.
-A green build means the prebuilt AAR was downloaded and published. (No JitPack account or
-configuration is needed — the repo's `jitpack.yml` drives it.)
 
 ### 7. Smoke-test the published packages
 

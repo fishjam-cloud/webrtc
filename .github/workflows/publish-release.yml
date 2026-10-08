@@ -1,0 +1,68 @@
+name: Publish release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish, without the "v" prefix (e.g. 124.0.2.4)
+        required: true
+
+concurrency:
+  group: publish-release-${{ github.event.release.tag_name || inputs.version }}
+
+env:
+  VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || format('v{0}', inputs.version) }}
+
+jobs:
+  cocoapods:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERSION }}
+
+      - name: Check the podspec version and the release asset
+        run: |
+          PODSPEC_VERSION=$(ruby -rcocoapods -e 'puts Pod::Specification.from_file("ios/FishjamWebRTC.podspec").version')
+          if [ "v$PODSPEC_VERSION" != "$VERSION" ]; then
+            echo "::error::ios/FishjamWebRTC.podspec is $PODSPEC_VERSION but the tag is $VERSION"
+            exit 1
+          fi
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/FishjamWebRTC.xcframework.zip"
+          curl -sSfIL -o /dev/null "$URL" || { echo "::error::Release asset missing: $URL"; exit 1; }
+
+      - name: Push to CocoaPods trunk
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+        run: |
+          if pod trunk info FishjamWebRTC | grep -q -- "- ${VERSION#v} "; then
+            echo "FishjamWebRTC ${VERSION#v} is already on trunk, skipping."
+            exit 0
+          fi
+          pod trunk push ios/FishjamWebRTC.podspec --allow-warnings
+
+  jitpack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the JitPack build
+        run: |
+          POM="https://jitpack.io/com/github/${GITHUB_REPOSITORY,,}/${VERSION}/webrtc-${VERSION}.pom"
+          for attempt in $(seq 1 20); do
+            CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 600 "$POM" || true)
+            echo "Attempt $attempt: HTTP $CODE"
+            [ "$CODE" = "200" ] && exit 0
+            sleep 30
+          done
+          echo "::error::JitPack did not publish $POM. Build log: https://jitpack.io/#${GITHUB_REPOSITORY}/${VERSION}"
+          exit 1
+
+      - name: Check the JitPack AAR matches the release asset
+        run: |
+          curl -sSfL -o jitpack.aar "https://jitpack.io/com/github/${GITHUB_REPOSITORY,,}/${VERSION}/webrtc-${VERSION}.aar"
+          curl -sSfL -o release.aar "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/FishjamWebRTC.aar"
+          sha256sum jitpack.aar release.aar
+          [ "$(sha256sum < jitpack.aar)" = "$(sha256sum < release.aar)" ] || { echo "::error::JitPack AAR differs from the release asset"; exit 1; }
+          ABIS=$(unzip -l jitpack.aar | grep -c "libjingle_peerconnection_so.so")
+          [ "$ABIS" = "4" ] || { echo "::error::Expected 4 ABIs, found $ABIS"; exit 1; }
